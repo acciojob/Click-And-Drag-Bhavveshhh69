@@ -1,57 +1,199 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Draggable Cubes</title>
-
+  <meta charset="UTF-8" />
+  <title>Draggable Cubes (Fixed)</title>
   <style>
     .container {
-      width: 400px;
+      width: 500px;
       height: 400px;
-      border: 3px solid black;
+      border: 3px solid #222;
       position: relative;
-      display: grid;
-      grid-template-columns: repeat(2, 100px);
-      grid-template-rows: repeat(2, 100px);
-      gap: 20px;
-      padding: 20px;
       margin: 40px auto;
-      background: #f4f4f4;
+      background: #f7f7f7;
+      overflow: hidden;
+      padding: 10px;
+    }
+
+    /* We keep grid styling only for initial layout calculation, cubes use absolute positioning */
+    .container.grid {
+      display: grid;
+      grid-template-columns: repeat(3, 120px);
+      grid-auto-rows: 120px;
+      gap: 10px;
     }
 
     .cube {
       width: 100px;
       height: 100px;
       background: royalblue;
-      position: absolute; /* required for dragging */
+      position: absolute;
       cursor: grab;
       border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      user-select: none;
     }
   </style>
-
 </head>
 <body>
 
-<div class="container">
-  <div class="cube"></div>
-  <div class="cube"></div>
-  <div class="cube"></div>
-  <div class="cube"></div>
+<div class="container grid">
+  <div class="cube">1</div>
+  <div class="cube">2</div>
+  <div class="cube">3</div>
+  <div class="cube">4</div>
+  <div class="cube">5</div>
+  <div class="cube">6</div>
 </div>
 
 <script>
   const container = document.querySelector(".container");
-  const cubes = document.querySelectorAll(".cube");
+  const cubes = Array.from(document.querySelectorAll(".cube"));
 
-  let selectedCube = null;
-  let offsetX = 0;
-  let offsetY = 0;
+  let dragging = null;            // the cube element being dragged
+  let pointerOffsetX = 0;         // pointer offset inside the cube (px)
+  let pointerOffsetY = 0;
 
-  // Place cubes in a grid initially
+  // Initial placement in a grid-like pattern inside the container
   function placeCubesInGrid() {
-    const gap = 20;
-    let index = 0;
+    const cols = 3;
+    const gap = 10; // matches grid gap in CSS
+    const cw = 100; // cube width
+    const ch = 100; // cube height
+    cubes.forEach((cube, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const left = col * (cw + gap) + 10; // + container padding
+      const top = row * (ch + gap) + 10;
+      cube.style.left = left + "px";
+      cube.style.top = top + "px";
+    });
+  }
 
-    cubes.forEach(cube => {
-      let col = index % 2;
-      let row = Math.floor(index / 2);
+  placeCubesInGrid();
+
+  // Mousedown starts drag
+  cubes.forEach(cube => {
+    cube.addEventListener("mousedown", (e) => {
+      // Prevent text selection
+      e.preventDefault();
+
+      dragging = cube;
+      cube.style.cursor = "grabbing";
+      cube.style.zIndex = 1000;
+
+      // Get container rect to compute relative coords
+      const containerRect = container.getBoundingClientRect();
+      const cubeRect = cube.getBoundingClientRect();
+
+      // pointerOffset is pointer position inside the cube (so the cube doesn't jump)
+      pointerOffsetX = e.clientX - cubeRect.left;
+      pointerOffsetY = e.clientY - cubeRect.top;
+    });
+  });
+
+  // Mousemove — update position if dragging
+  document.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+
+    const containerRect = container.getBoundingClientRect();
+
+    // Pointer position relative to container
+    const pointerRelX = e.clientX - containerRect.left;
+    const pointerRelY = e.clientY - containerRect.top;
+
+    // New top-left for the cube (container coordinate space)
+    let newLeft = pointerRelX - pointerOffsetX;
+    let newTop = pointerRelY - pointerOffsetY;
+
+    // Compute boundaries (container content area)
+    const minLeft = 0;
+    const minTop = 0;
+    const maxLeft = containerRect.width - dragging.offsetWidth;
+    const maxTop = containerRect.height - dragging.offsetHeight;
+
+    // Clamp to bounds
+    newLeft = Math.max(minLeft, Math.min(newLeft, maxLeft));
+    newTop  = Math.max(minTop,  Math.min(newTop,  maxTop));
+
+    // Apply position
+    dragging.style.left = newLeft + "px";
+    dragging.style.top  = newTop + "px";
+  });
+
+  // Mouseup — drop
+  document.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging.style.cursor = "grab";
+    dragging.style.zIndex = 1;
+    dragging = null;
+  });
+
+  // Optional: handle leaving window (drop as well)
+  window.addEventListener("blur", () => {
+    if (dragging) {
+      dragging.style.cursor = "grab";
+      dragging.style.zIndex = 1;
+      dragging = null;
+    }
+  });
+
+  // Touch support (basic)
+  let touchId = null;
+  document.addEventListener("touchstart", (e) => {
+    const t = e.changedTouches[0];
+    const target = document.elementFromPoint(t.clientX, t.clientY);
+    if (target && target.classList && target.classList.contains("cube")) {
+      touchId = t.identifier;
+      dragging = target;
+      target.style.cursor = "grabbing";
+      target.style.zIndex = 1000;
+      const cubeRect = target.getBoundingClientRect();
+      pointerOffsetX = t.clientX - cubeRect.left;
+      pointerOffsetY = t.clientY - cubeRect.top;
+    }
+  }, {passive: false});
+
+  document.addEventListener("touchmove", (e) => {
+    if (!dragging) return;
+    for (const t of e.changedTouches) {
+      if (t.identifier === touchId) {
+        e.preventDefault();
+        const containerRect = container.getBoundingClientRect();
+        const pointerRelX = t.clientX - containerRect.left;
+        const pointerRelY = t.clientY - containerRect.top;
+
+        let newLeft = pointerRelX - pointerOffsetX;
+        let newTop = pointerRelY - pointerOffsetY;
+
+        const maxLeft = containerRect.width - dragging.offsetWidth;
+        const maxTop = containerRect.height - dragging.offsetHeight;
+
+        newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+        newTop  = Math.max(0, Math.min(newTop, maxTop));
+
+        dragging.style.left = newLeft + "px";
+        dragging.style.top  = newTop + "px";
+      }
+    }
+  }, {passive: false});
+
+  document.addEventListener("touchend", (e) => {
+    if (!dragging) return;
+    for (const t of e.changedTouches) {
+      if (t.identifier === touchId) {
+        dragging.style.cursor = "grab";
+        dragging.style.zIndex = 1;
+        dragging = null;
+        touchId = null;
+      }
+    }
+  });
+
+</script>
+</body>
+</html>
